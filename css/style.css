@@ -129,8 +129,8 @@ h1, h2, h3 { font-family: "Georgia", "Times New Roman", serif; line-height: 1.25
 
 /* Hero */
 .hero {
-  background: radial-gradient(circle at 20% 20%, rgba(168,220,190,0.4), transparent 45%),
-              linear-gradient(160deg, var(--azul-oscuro), var(--azul) 72%);
+  background: linear-gradient(160deg, rgba(46,107,79,0.80), rgba(79,154,114,0.68)),
+              url('/img/torrevigia.jpg') center / cover no-repeat fixed;
   color: var(--blanco);
   padding: 14px 0;
   position: relative;
@@ -289,6 +289,11 @@ h1, h2, h3 { font-family: "Georgia", "Times New Roman", serif; line-height: 1.25
 section { padding: 76px 0; }
 
 #comunicados, #contacto { padding: 40px 0 60px; }
+
+#comunicados {
+  background: linear-gradient(180deg, rgba(245,243,234,0.60), rgba(245,243,234,0.78)),
+              url('/img/torrevigia.jpg') center / cover no-repeat fixed;
+}
 
 .section-head {
   max-width: 680px;
@@ -541,16 +546,17 @@ form.card-form {
 
 /* Footer */
 footer.site-footer {
-  background: var(--azul-oscuro);
-  color: rgba(255,255,255,0.75);
-  padding: 50px 0 24px;
+  background: linear-gradient(180deg, rgba(46,107,79,0.72), rgba(20,54,38,0.94)),
+              url('/img/torrevigia.jpg') center / cover no-repeat fixed;
+  color: rgba(255,255,255,0.82);
+  padding: 16px 0 14px;
 }
 
 .footer-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
   gap: 40px;
-  margin-bottom: 34px;
+  margin-bottom: 14px;
 }
 
 .footer-grid h4 { color: var(--blanco); font-size: 0.95rem; margin: 0 0 14px; }
@@ -560,13 +566,24 @@ footer.site-footer {
 
 .footer-bottom {
   border-top: 1px solid rgba(255,255,255,0.12);
-  padding-top: 20px;
+  padding-top: 12px;
   font-size: 0.8rem;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
   gap: 10px;
 }
+
+.admin-login {
+  color: var(--dorado);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: 1px solid rgba(201,165,74,0.5);
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.admin-login:hover { color: var(--blanco); border-color: var(--blanco); }
 
 /* Page hero (subpáginas) */
 .page-hero {

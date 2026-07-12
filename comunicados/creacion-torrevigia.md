@@ -1,11 +1,8 @@
 ---
 title: "Creación de Torrevigía, plataforma ciudadana por la transparencia y el buen gobierno en Torrenueva Costa"
-description: "Torrevigía se constituye como plataforma ciudadana independiente por la transparencia y el buen gobierno en Torrenueva Costa. Consulta el escrito de creación."
-date: 2026-07-12
-category: "Participación"
-summary: "Nace Torrevigía, plataforma ciudadana independiente y sin ánimo de lucro para vigilar, informar y exigir transparencia y buen gobierno en Torrenueva Costa. Adjuntamos el escrito de creación."
-breadcrumb: "Creación de Torrevigía"
-documento: "/img/comunicados/escrito-creacion-plataforma.pdf"
+fecha_inicio: "2026-07-05"
+documentos:
+  - "/img/comunicados/creacion-torrevigia.pdf"
 ---
 Torrevigía nace como plataforma ciudadana independiente, sin ánimo de lucro, formada por vecinas y vecinos de Torrenueva Costa comprometidos con la transparencia y el buen gobierno en la gestión de lo público.
 

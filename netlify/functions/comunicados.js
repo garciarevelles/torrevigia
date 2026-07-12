@@ -1,12 +1,10 @@
 // Mini-panel de comunicados de Torrevigía.
-// Función serverless (Netlify) que verifica usuario/contraseña y guarda los
-// comunicados. En producción escribe en el repositorio de GitHub (API de
-// contenidos). En local, bajo `netlify dev`, escribe directamente en los
-// archivos del proyecto para poder probar sin token ni GitHub.
+// En producción guarda en el repositorio de GitHub (API de contenidos); en
+// local, bajo `netlify dev`, escribe en los archivos del proyecto.
 //
-// Variables de entorno (producción): ADMIN_USER, ADMIN_PASSWORD,
-// GITHUB_TOKEN, GITHUB_REPO ("usuario/repo"), GITHUB_BRANCH.
-// En local basta ADMIN_USER y ADMIN_PASSWORD (p. ej. en un archivo .env).
+// Modelo de comunicado (frontmatter):
+//   title, fecha_inicio, fecha_fin (opcional), documentos (lista, opcional),
+//   orden (opcional), publicado:false (opcional) + cuerpo Markdown.
 
 const fs = require("fs");
 const path = require("path");
@@ -16,9 +14,7 @@ const REPO = process.env.GITHUB_REPO;
 const BRANCH = process.env.GITHUB_BRANCH || "main";
 const COMUNICADOS_DIR = "comunicados";
 const PDF_DIR = "img/comunicados";
-const CATEGORIES = ["Transparencia", "Urbanismo", "Participación"];
 
-// Modo local: activo cuando corremos bajo `netlify dev`.
 const USE_LOCAL = process.env.NETLIFY_DEV === "true";
 
 function findRoot() {
@@ -51,6 +47,19 @@ function slugify(str) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 }
+function sanitizeName(name) {
+  const dot = String(name).lastIndexOf(".");
+  const ext = dot >= 0 ? String(name).slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, "") : "";
+  const base =
+    (dot >= 0 ? String(name).slice(0, dot) : String(name))
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "documento";
+  return base + (ext || ".pdf");
+}
 function checkAuth(body) {
   const pass = process.env.ADMIN_PASSWORD;
   const user = process.env.ADMIN_USER;
@@ -62,18 +71,24 @@ function checkAuth(body) {
 function esc(s) {
   return `"${String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
+function getDocs(data) {
+  if (Array.isArray(data.documentos)) return data.documentos;
+  if (data.documento) return [data.documento];
+  return [];
+}
 function toMarkdown(f) {
   const lines = ["---"];
   lines.push(`title: ${esc(f.title)}`);
-  if (f.description) lines.push(`description: ${esc(f.description)}`);
-  lines.push(`date: ${f.date}`);
-  lines.push(`category: ${esc(f.category)}`);
-  lines.push(`summary: ${esc(f.summary)}`);
-  lines.push(`breadcrumb: ${esc(f.breadcrumb || f.title)}`);
-  if (f.documento) lines.push(`documento: ${esc(f.documento)}`);
+  lines.push(`fecha_inicio: ${esc(String(f.fecha_inicio || "").slice(0, 10))}`);
+  if (f.fecha_fin) lines.push(`fecha_fin: ${esc(String(f.fecha_fin).slice(0, 10))}`);
+  if (Array.isArray(f.documentos) && f.documentos.length) {
+    lines.push("documentos:");
+    for (const d of f.documentos) lines.push(`  - ${esc(d)}`);
+  }
   if (f.orden !== undefined && f.orden !== null && f.orden !== "" && !isNaN(Number(f.orden))) {
     lines.push(`orden: ${parseInt(f.orden, 10)}`);
   }
+  if (f.publicado === false || f.publicado === "false") lines.push("publicado: false");
   lines.push("---");
   lines.push((f.body || "").replace(/\r\n/g, "\n").trim());
   lines.push("");
@@ -85,14 +100,35 @@ function parseMarkdown(text) {
   let body = text;
   if (m) {
     body = m[2];
-    for (const line of m[1].split("\n")) {
-      const mm = line.match(/^(\w+):\s*(.*)$/);
-      if (!mm) continue;
-      let v = mm[2].trim();
-      if (v.startsWith('"') && v.endsWith('"')) {
-        v = v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    const lines = m[1].split("\n");
+    let i = 0;
+    const unquote = (v) =>
+      v.startsWith('"') && v.endsWith('"')
+        ? v.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\")
+        : v;
+    while (i < lines.length) {
+      const kv = lines[i].match(/^(\w+):\s*(.*)$/);
+      if (kv) {
+        const key = kv[1];
+        const val = kv[2].trim();
+        if (val === "") {
+          const list = [];
+          let j = i + 1;
+          while (j < lines.length && /^\s*-\s+/.test(lines[j])) {
+            list.push(unquote(lines[j].replace(/^\s*-\s+/, "").trim()));
+            j++;
+          }
+          if (list.length) {
+            data[key] = list;
+            i = j;
+            continue;
+          }
+          data[key] = "";
+        } else {
+          data[key] = unquote(val);
+        }
       }
-      data[mm[1]] = v;
+      i++;
     }
   }
   return { data, body: body.replace(/^\n+/, "") };
@@ -117,7 +153,7 @@ async function ghGetFile(p) {
   return res.json();
 }
 
-/* ---------- Capa de almacenamiento (local o GitHub) ---------- */
+/* ---------- Almacenamiento (local o GitHub) ---------- */
 async function storeListMd(dir) {
   if (USE_LOCAL) {
     const abs = path.join(ROOT, dir);
@@ -159,11 +195,7 @@ async function storeWrite(p, buffer, message, sha) {
   }
   const payload = { message, content: buffer.toString("base64"), branch: BRANCH };
   if (sha && sha !== "local") payload.sha = sha;
-  const res = await fetch(ghUrl(p), {
-    method: "PUT",
-    headers: ghHeaders(),
-    body: JSON.stringify(payload),
-  });
+  const res = await fetch(ghUrl(p), { method: "PUT", headers: ghHeaders(), body: JSON.stringify(payload) });
   if (!res.ok) throw new Error(`GitHub PUT ${p}: ${res.status} ${await res.text()}`);
 }
 async function storeRemove(p, message) {
@@ -182,8 +214,8 @@ async function storeRemove(p, message) {
   if (!res.ok) throw new Error(`GitHub DELETE ${p}: ${res.status} ${await res.text()}`);
 }
 
-// Devuelve un valor de "orden" para colocar un comunicado nuevo arriba del
-// todo, si ya hay otros ordenados manualmente; si no, undefined (usa la fecha).
+// Valor de "orden" para colocar un comunicado nuevo arriba, si ya hay otros
+// ordenados manualmente; si no, undefined (se usa la fecha).
 async function topOrden() {
   const files = await storeListMd(COMUNICADOS_DIR);
   let min = null;
@@ -226,8 +258,9 @@ exports.handler = async (event) => {
         result.push({
           slug: f.name.replace(/\.md$/, ""),
           title: data.title || f.name,
-          date: data.date || "",
-          category: data.category || "",
+          fecha_inicio: data.fecha_inicio || data.date || "",
+          fecha_fin: data.fecha_fin || "",
+          publicado: data.publicado,
           orden: data.orden,
         });
       }
@@ -238,9 +271,9 @@ exports.handler = async (event) => {
         if (ha && hb) return Number(oa) - Number(ob);
         if (ha) return -1;
         if (hb) return 1;
-        return a.date < b.date ? 1 : -1;
+        return a.fecha_inicio < b.fecha_inicio ? 1 : -1;
       });
-      return json(200, { comunicados: result, categories: CATEGORIES, mode: USE_LOCAL ? "local" : "github" });
+      return json(200, { comunicados: result, mode: USE_LOCAL ? "local" : "github" });
     }
 
     if (action === "get") {
@@ -248,59 +281,86 @@ exports.handler = async (event) => {
       const stored = await storeRead(`${COMUNICADOS_DIR}/${slug}.md`);
       if (!stored) return json(404, { error: "Comunicado no encontrado" });
       const { data, body: mdBody } = parseMarkdown(stored.text);
-      return json(200, { slug, data, body: mdBody, sha: stored.sha });
+      return json(200, {
+        slug,
+        data: {
+          title: data.title || "",
+          fecha_inicio: data.fecha_inicio || data.date || "",
+          fecha_fin: data.fecha_fin || "",
+          documentos: getDocs(data),
+          publicado: data.publicado,
+        },
+        body: mdBody,
+        sha: stored.sha,
+      });
     }
 
     if (action === "save") {
-      if (!body.title || !body.date || !body.category || !body.summary) {
-        return json(400, { error: "Faltan campos obligatorios (título, fecha, categoría, resumen)" });
+      if (!body.title || !body.fecha_inicio || !body.body || !String(body.body).trim()) {
+        return json(400, { error: "Faltan campos obligatorios (título, fecha inicio, contenido)" });
       }
       const isEdit = !!body.slug;
       const slug = isEdit ? slugify(body.slug) : slugify(body.title);
       if (!slug) return json(400, { error: "No se pudo generar el identificador del comunicado" });
-
-      let documento = body.documento || "";
-      if (body.pdf) {
-        const pdfPath = `${PDF_DIR}/${slug}.pdf`;
-        const pdfSha = await storeExists(pdfPath);
-        await storeWrite(pdfPath, Buffer.from(body.pdf, "base64"), `Subir documento: ${slug}`, pdfSha);
-        documento = `/${pdfPath}`;
-      }
 
       const mdPath = `${COMUNICADOS_DIR}/${slug}.md`;
       const existing = await storeRead(mdPath);
       if (existing && !isEdit) {
         return json(409, { error: "Ya existe un comunicado con ese título. Cambia el título o edítalo." });
       }
+      const prev = existing ? parseMarkdown(existing.text).data : {};
+      const prevDocs = getDocs(prev);
 
-      // Orden: al editar se conserva el existente; al crear se coloca arriba
-      // si ya hay comunicados ordenados manualmente.
-      let orden;
-      if (existing) orden = parseMarkdown(existing.text).data.orden;
-      else orden = await topOrden();
+      // Documentos que se conservan (los que el usuario no ha quitado)
+      const kept = Array.isArray(body.documentos) ? body.documentos.filter(Boolean) : [];
+      // Subir documentos nuevos
+      const nuevos = Array.isArray(body.nuevos) ? body.nuevos : [];
+      const nuevasPaths = [];
+      for (const f of nuevos) {
+        if (!f || !f.data || !f.name) continue;
+        const name = sanitizeName(f.name);
+        const p = `${PDF_DIR}/${slug}/${name}`;
+        const sha = await storeExists(p);
+        await storeWrite(p, Buffer.from(f.data, "base64"), `Subir documento: ${name}`, sha);
+        nuevasPaths.push(`/${p}`);
+      }
+      const documentos = [...kept, ...nuevasPaths];
+      // Borrar del almacenamiento los documentos que se han quitado
+      for (const d of prevDocs) {
+        if (!documentos.includes(d)) {
+          const dp = d.replace(/^\//, "");
+          if (dp.startsWith(PDF_DIR + "/")) await storeRemove(dp, `Eliminar documento: ${d}`);
+        }
+      }
 
       const md = toMarkdown({
         title: body.title,
-        description: body.description,
-        date: body.date,
-        category: body.category,
-        summary: body.summary,
-        breadcrumb: body.breadcrumb,
-        documento,
-        orden,
+        fecha_inicio: body.fecha_inicio,
+        fecha_fin: body.fecha_fin || "",
+        documentos,
+        orden: isEdit ? prev.orden : await topOrden(),
+        publicado: prev.publicado,
         body: body.body,
       });
       await storeWrite(mdPath, Buffer.from(md, "utf8"), `${isEdit ? "Editar" : "Crear"} comunicado: ${slug}`, existing ? existing.sha : null);
-      return json(200, { ok: true, slug, documento });
+      return json(200, { ok: true, slug, documentos });
     }
 
-    if (action === "delete") {
+    if (action === "toggle") {
       const slug = slugify(body.slug);
-      const mdPath = `${COMUNICADOS_DIR}/${slug}.md`;
-      if (!(await storeExists(mdPath))) return json(404, { error: "Comunicado no encontrado" });
-      await storeRemove(mdPath, `Eliminar comunicado: ${slug}`);
-      await storeRemove(`${PDF_DIR}/${slug}.pdf`, `Eliminar documento: ${slug}`);
-      return json(200, { ok: true });
+      const p = `${COMUNICADOS_DIR}/${slug}.md`;
+      const stored = await storeRead(p);
+      if (!stored) return json(404, { error: "Comunicado no encontrado" });
+      const { data, body: mdBody } = parseMarkdown(stored.text);
+      const isPub = !(data.publicado === false || data.publicado === "false");
+      const md = toMarkdown({
+        ...data,
+        documentos: getDocs(data),
+        publicado: isPub ? false : undefined,
+        body: mdBody,
+      });
+      await storeWrite(p, Buffer.from(md, "utf8"), `${isPub ? "Desactivar" : "Activar"} comunicado: ${slug}`, stored.sha);
+      return json(200, { ok: true, publicado: !isPub });
     }
 
     if (action === "setOrder") {
@@ -313,7 +373,7 @@ exports.handler = async (event) => {
         if (!stored) continue;
         const { data, body: mdBody } = parseMarkdown(stored.text);
         if (String(data.orden) === String(i)) continue;
-        const md = toMarkdown({ ...data, orden: i, body: mdBody });
+        const md = toMarkdown({ ...data, documentos: getDocs(data), orden: i, body: mdBody });
         await storeWrite(p, Buffer.from(md, "utf8"), `Reordenar comunicado: ${slug}`, stored.sha);
         changed++;
       }
@@ -328,11 +388,26 @@ exports.handler = async (event) => {
         if (!stored) continue;
         const { data, body: mdBody } = parseMarkdown(stored.text);
         if (data.orden === undefined || data.orden === null || data.orden === "") continue;
-        const md = toMarkdown({ ...data, orden: undefined, body: mdBody });
+        const md = toMarkdown({ ...data, documentos: getDocs(data), orden: undefined, body: mdBody });
         await storeWrite(f.path, Buffer.from(md, "utf8"), `Quitar orden manual: ${f.name}`, stored.sha);
         changed++;
       }
       return json(200, { ok: true, changed });
+    }
+
+    if (action === "delete") {
+      const slug = slugify(body.slug);
+      const mdPath = `${COMUNICADOS_DIR}/${slug}.md`;
+      const stored = await storeRead(mdPath);
+      if (!stored) return json(404, { error: "Comunicado no encontrado" });
+      const { data } = parseMarkdown(stored.text);
+      await storeRemove(mdPath, `Eliminar comunicado: ${slug}`);
+      // Borrar todos los documentos adjuntos del comunicado
+      for (const d of getDocs(data)) {
+        const dp = d.replace(/^\//, "");
+        if (dp.startsWith(PDF_DIR + "/")) await storeRemove(dp, `Eliminar documento: ${d}`);
+      }
+      return json(200, { ok: true });
     }
 
     return json(400, { error: "Acción desconocida" });

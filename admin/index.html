@@ -11,35 +11,39 @@
   body { margin:0; font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#1f2933; background:var(--arena); line-height:1.5; }
   header { background:var(--verde); color:#fff; padding:16px 22px; display:flex; align-items:center; justify-content:space-between; }
   header h1 { margin:0; font-size:1.1rem; font-weight:700; }
-  header button { background:rgba(255,255,255,.15); }
   main { max-width:820px; margin:0 auto; padding:24px 20px 60px; }
   .card { background:#fff; border:1px solid var(--linea); border-radius:12px; padding:22px; margin-bottom:20px; box-shadow:0 8px 24px rgba(46,107,79,.06); }
   h2 { margin:0 0 16px; font-size:1.15rem; color:var(--verde); }
   label { display:block; font-weight:600; font-size:.86rem; margin:14px 0 6px; }
   input, select, textarea { width:100%; padding:10px 12px; border:1px solid var(--linea); border-radius:8px; font:inherit; background:#fff; }
-  textarea { min-height:200px; resize:vertical; font-family:inherit; }
+  textarea { min-height:220px; resize:vertical; font-family:inherit; }
   .hint { font-size:.78rem; color:var(--gris); margin:4px 0 0; }
   button { cursor:pointer; border:none; border-radius:999px; padding:11px 20px; font:inherit; font-weight:700; color:#fff; background:var(--verde); }
   button.secondary { background:#fff; color:var(--verde); border:1px solid var(--verde); }
-  button.danger { background:#b23b3b; }
   button.link { background:none; color:var(--verde); padding:4px 8px; font-weight:600; }
   button.link:disabled { opacity:.3; cursor:default; }
-  .arrows { display:flex; flex-direction:column; line-height:1; }
-  .arrows button { padding:0 6px; font-size:.8rem; }
-  .item .left { display:flex; align-items:center; gap:10px; }
-  .orderbar { margin:0 0 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .row { display:flex; gap:12px; flex-wrap:wrap; }
   .row > div { flex:1; min-width:180px; }
   .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:22px; }
   .item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--linea); }
   .item:last-child { border-bottom:none; }
+  .item .left { display:flex; align-items:center; gap:10px; }
   .item .meta { font-size:.8rem; color:var(--gris); }
-  .item .item-actions { display:flex; gap:6px; flex-shrink:0; }
+  .item-actions { display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
+  .arrows { display:flex; flex-direction:column; line-height:1; }
+  .arrows button { padding:0 6px; font-size:.8rem; }
+  .orderbar { margin:0 0 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .badge { display:inline-block; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px; margin-left:8px; vertical-align:middle; }
+  .st-on { background:#e2f3e9; color:#1f6b43; }
+  .st-off { background:#eee; color:#666; }
+  .st-prog { background:#fff2d6; color:#8a5b00; }
+  .st-exp { background:#fde3e3; color:#a12; }
+  .docitem { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px solid var(--linea); border-radius:8px; margin-top:8px; font-size:.88rem; }
+  .docitem.nuevo { border-style:dashed; }
   .msg { padding:11px 14px; border-radius:8px; margin-bottom:16px; font-size:.9rem; display:none; }
   .msg.error { background:#fdecec; color:#a12; border:1px solid #f3c3c3; display:block; }
   .msg.ok { background:#e9f6ee; color:#1f6b43; border:1px solid #b9e2c8; display:block; }
   .hidden { display:none; }
-  .doc-actual { font-size:.82rem; color:var(--gris); margin-top:6px; }
   .spinner { opacity:.6; pointer-events:none; }
 </style>
 </head>
@@ -47,7 +51,7 @@
 
 <header>
   <h1>Torrevigía · Panel de comunicados</h1>
-  <button id="logoutBtn" class="hidden" onclick="logout()">Salir</button>
+  <button id="logoutBtn" class="hidden secondary" style="color:#fff;background:rgba(255,255,255,.15);border:none;" onclick="logout()">Salir</button>
 </header>
 
 <main>
@@ -73,7 +77,7 @@
         <button onclick="newComunicado()">+ Nuevo comunicado</button>
       </div>
     </div>
-    <div id="listMsg" class="msg"></div>
+    <div id="listMsg" class="msg" style="margin-top:12px;"></div>
     <div id="list" style="margin-top:14px;"></div>
   </section>
 
@@ -83,50 +87,47 @@
     <div id="formMsg" class="msg"></div>
     <form id="comForm">
       <input type="hidden" id="slug" />
+
       <label for="title">Título *</label>
       <input type="text" id="title" required />
 
       <div class="row">
         <div>
-          <label for="date">Fecha *</label>
-          <input type="date" id="date" required />
+          <label for="fecha_inicio">Fecha de inicio *</label>
+          <input type="date" id="fecha_inicio" required />
+          <p class="hint">Se muestra en la web a partir de esta fecha.</p>
         </div>
         <div>
-          <label for="category">Categoría *</label>
-          <select id="category"></select>
+          <label for="fecha_fin">Fecha de fin</label>
+          <input type="date" id="fecha_fin" />
+          <p class="hint">Opcional. Si la dejas vacía, se ve indefinidamente.</p>
         </div>
       </div>
 
-      <label for="summary">Resumen (texto de la tarjeta) *</label>
-      <textarea id="summary" style="min-height:70px;" required></textarea>
-
-      <label for="breadcrumb">Texto breve (miga de pan)</label>
-      <input type="text" id="breadcrumb" />
-      <p class="hint">Si lo dejas vacío se usa el título.</p>
-
-      <label for="description">Descripción SEO (opcional)</label>
-      <textarea id="description" style="min-height:60px;"></textarea>
-
-      <label for="body">Contenido</label>
-      <textarea id="body"></textarea>
+      <label for="body">Contenido *</label>
+      <textarea id="body" required></textarea>
       <p class="hint">Se admite Markdown: <code>## Subtítulo</code>, <code>**negrita**</code>, <code>[enlace](/contacto.html)</code>.</p>
 
-      <label for="pdf">Documento adjunto (PDF)</label>
-      <input type="file" id="pdf" accept="application/pdf" />
-      <div id="docActual" class="doc-actual"></div>
+      <label>Documentos adjuntos</label>
+      <div id="docsList"></div>
+      <input type="file" id="docs" accept="application/pdf,.pdf,.doc,.docx" multiple style="margin-top:8px;" />
+      <p class="hint">Puedes adjuntar varios. Se admiten PDF y documentos de texto.</p>
 
       <div class="actions">
         <button type="submit" id="saveBtn">Guardar y publicar</button>
         <button type="button" class="secondary" onclick="showList()">Cancelar</button>
       </div>
-      <p class="hint" style="margin-top:14px;">Al guardar, el sitio se reconstruye solo en Netlify (puede tardar 1-2 minutos en verse publicado).</p>
+      <p class="hint" style="margin-top:14px;">Al guardar, el sitio se reconstruye solo en Netlify (1-2 min en verse publicado).</p>
     </form>
   </section>
 </main>
 
 <script>
 const API = "/.netlify/functions/comunicados";
-let CATEGORIES = ["Transparencia", "Urbanismo", "Participación"];
+let listData = [];
+let orderDirty = false;
+let currentDocs = []; // documentos ya guardados (rutas) del comunicado en edición
+let newFiles = [];    // documentos nuevos { name, data(base64) }
 
 function creds() {
   return {
@@ -148,6 +149,15 @@ async function api(action, extra) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ("Error " + res.status));
   return data;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+function basename(p) { return decodeURIComponent(String(p).split("/").pop()); }
+function today() { return new Date().toISOString().slice(0, 10); }
+function fmtDate(s) {
+  const p = String(s || "").slice(0, 10).split("-");
+  return p.length === 3 && p[0] ? p[2] + "/" + p[1] + "/" + p[0] : "";
 }
 
 function show(view) {
@@ -178,17 +188,22 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   }
 });
 
-let listData = [];
-let orderDirty = false;
-
+// LISTA
 async function loadList() {
   const data = await api("list");
-  if (data.categories) CATEGORIES = data.categories;
   listData = data.comunicados || [];
   orderDirty = false;
   renderList();
 }
-
+function statusOf(c) {
+  if (c.publicado === false || c.publicado === "false") return { label: "Inactivo", cls: "st-off" };
+  const t = today();
+  const ini = (c.fecha_inicio || "").slice(0, 10);
+  const fin = (c.fecha_fin || "").slice(0, 10);
+  if (ini && ini > t) return { label: "Programado", cls: "st-prog" };
+  if (fin && fin < t) return { label: "Caducado", cls: "st-exp" };
+  return { label: "Activo", cls: "st-on" };
+}
 function renderList() {
   const list = document.getElementById("list");
   list.innerHTML = "";
@@ -225,57 +240,52 @@ function renderList() {
     arrows.className = "arrows";
     const up = document.createElement("button");
     up.className = "link"; up.textContent = "▲"; up.title = "Subir";
-    up.disabled = i === 0;
-    up.onclick = () => moveItem(i, -1);
+    up.disabled = i === 0; up.onclick = () => moveItem(i, -1);
     const down = document.createElement("button");
     down.className = "link"; down.textContent = "▼"; down.title = "Bajar";
-    down.disabled = i === listData.length - 1;
-    down.onclick = () => moveItem(i, 1);
+    down.disabled = i === listData.length - 1; down.onclick = () => moveItem(i, 1);
     arrows.append(up, down);
 
+    const st = statusOf(c);
+    const fechas = fmtDate(c.fecha_inicio) + (c.fecha_fin ? " → " + fmtDate(c.fecha_fin) : "");
     const info = document.createElement("div");
     info.innerHTML =
-      "<strong>" + escapeHtml(c.title) + "</strong>" +
-      '<div class="meta">' + (c.date || "") + (c.category ? " · " + escapeHtml(c.category) : "") + "</div>";
+      "<strong>" + escapeHtml(c.title) + '</strong><span class="badge ' + st.cls + '">' + st.label + "</span>" +
+      '<div class="meta">' + escapeHtml(fechas) + "</div>";
 
     left.append(arrows, info);
 
     const acts = document.createElement("div");
     acts.className = "item-actions";
     const bE = document.createElement("button");
-    bE.className = "link"; bE.textContent = "Editar";
-    bE.onclick = () => editComunicado(c.slug);
+    bE.className = "link"; bE.textContent = "Editar"; bE.onclick = () => editComunicado(c.slug);
+    const active = !(c.publicado === false || c.publicado === "false");
+    const bT = document.createElement("button");
+    bT.className = "link"; bT.textContent = active ? "Desactivar" : "Activar";
+    bT.onclick = () => toggleActive(c.slug);
     const bD = document.createElement("button");
     bD.className = "link"; bD.style.color = "#b23b3b"; bD.textContent = "Borrar";
     bD.onclick = () => delComunicado(c.slug, c.title);
-    acts.append(bE, bD);
+    acts.append(bE, bT, bD);
 
     div.append(left, acts);
     list.append(div);
   });
 }
-
 function moveItem(i, dir) {
   const j = i + dir;
   if (j < 0 || j >= listData.length) return;
-  const t = listData[i];
-  listData[i] = listData[j];
-  listData[j] = t;
-  orderDirty = true;
-  renderList();
+  const t = listData[i]; listData[i] = listData[j]; listData[j] = t;
+  orderDirty = true; renderList();
 }
-
 async function saveOrder() {
   setMsg("listMsg", "Guardando orden…", "");
   try {
     await api("setOrder", { order: listData.map((c) => c.slug) });
     await loadList();
     setMsg("listMsg", "Orden guardado. El sitio se está reconstruyendo.", "ok");
-  } catch (e) {
-    setMsg("listMsg", e.message, "error");
-  }
+  } catch (e) { setMsg("listMsg", e.message, "error"); }
 }
-
 async function clearOrderCmd() {
   if (!confirm("¿Volver a ordenar por fecha (más reciente arriba)? Se quitará el orden manual.")) return;
   setMsg("listMsg", "Aplicando orden por fecha…", "");
@@ -283,75 +293,52 @@ async function clearOrderCmd() {
     await api("clearOrder");
     await loadList();
     setMsg("listMsg", "Ahora se ordena por fecha (más reciente arriba).", "ok");
-  } catch (e) {
-    setMsg("listMsg", e.message, "error");
-  }
+  } catch (e) { setMsg("listMsg", e.message, "error"); }
 }
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
-}
-
-function fillCategories(sel) {
-  const s = document.getElementById("category");
-  s.innerHTML = "";
-  for (const c of CATEGORIES) {
-    const o = document.createElement("option");
-    o.value = c; o.textContent = c;
-    if (c === sel) o.selected = true;
-    s.append(o);
-  }
-}
-function showList() { setMsg("listMsg", "", ""); loadList().catch((e) => setMsg("listMsg", e.message, "error")); show("listView"); }
-
-function newComunicado() {
-  document.getElementById("comForm").reset();
-  document.getElementById("slug").value = "";
-  document.getElementById("formTitle").textContent = "Nuevo comunicado";
-  document.getElementById("date").value = new Date().toISOString().slice(0, 10);
-  document.getElementById("docActual").textContent = "";
-  document.getElementById("comForm").dataset.documento = "";
-  fillCategories();
-  setMsg("formMsg", "", "");
-  show("formView");
-}
-
-async function editComunicado(slug) {
-  setMsg("listMsg", "Cargando…", "");
+async function toggleActive(slug) {
+  setMsg("listMsg", "Actualizando…", "");
   try {
-    const d = await api("get", { slug });
-    document.getElementById("comForm").reset();
-    document.getElementById("slug").value = d.slug;
-    document.getElementById("formTitle").textContent = "Editar comunicado";
-    document.getElementById("title").value = d.data.title || "";
-    document.getElementById("date").value = (d.data.date || "").slice(0, 10);
-    document.getElementById("summary").value = d.data.summary || "";
-    document.getElementById("breadcrumb").value = d.data.breadcrumb || "";
-    document.getElementById("description").value = d.data.description || "";
-    document.getElementById("body").value = d.body || "";
-    fillCategories(d.data.category);
-    const doc = d.data.documento || "";
-    document.getElementById("comForm").dataset.documento = doc;
-    document.getElementById("docActual").textContent = doc ? "Documento actual: " + doc.split("/").pop() : "";
-    setMsg("listMsg", "", "");
-    setMsg("formMsg", "", "");
-    show("formView");
-  } catch (e) {
-    setMsg("listMsg", e.message, "error");
-  }
+    const r = await api("toggle", { slug });
+    await loadList();
+    setMsg("listMsg", r.publicado ? "Comunicado activado." : "Comunicado desactivado (oculto en la web).", "ok");
+  } catch (e) { setMsg("listMsg", e.message, "error"); }
 }
-
 async function delComunicado(slug, title) {
-  if (!confirm('¿Eliminar el comunicado "' + title + '"? Esta acción no se puede deshacer.')) return;
+  if (!confirm('¿Eliminar el comunicado "' + title + '" y sus documentos adjuntos? No se puede deshacer.')) return;
   setMsg("listMsg", "Eliminando…", "");
   try {
     await api("delete", { slug });
     await loadList();
     setMsg("listMsg", "Comunicado eliminado.", "ok");
-  } catch (e) {
-    setMsg("listMsg", e.message, "error");
-  }
+  } catch (e) { setMsg("listMsg", e.message, "error"); }
 }
+function showList() { setMsg("listMsg", "", ""); loadList().catch((e) => setMsg("listMsg", e.message, "error")); show("listView"); }
 
+// DOCUMENTOS (form)
+function renderDocs() {
+  const box = document.getElementById("docsList");
+  box.innerHTML = "";
+  currentDocs.forEach((d, i) => {
+    const row = document.createElement("div");
+    row.className = "docitem";
+    const a = document.createElement("a");
+    a.href = d; a.target = "_blank"; a.rel = "noopener"; a.textContent = "📄 " + basename(d);
+    const rm = document.createElement("button");
+    rm.className = "link"; rm.style.color = "#b23b3b"; rm.textContent = "Quitar";
+    rm.type = "button"; rm.onclick = () => { currentDocs.splice(i, 1); renderDocs(); };
+    row.append(a, rm); box.append(row);
+  });
+  newFiles.forEach((f, i) => {
+    const row = document.createElement("div");
+    row.className = "docitem nuevo";
+    const span = document.createElement("span");
+    span.textContent = "📄 " + f.name + " (nuevo)";
+    const rm = document.createElement("button");
+    rm.className = "link"; rm.style.color = "#b23b3b"; rm.textContent = "Quitar";
+    rm.type = "button"; rm.onclick = () => { newFiles.splice(i, 1); renderDocs(); };
+    row.append(span, rm); box.append(row);
+  });
+}
 function readFileB64(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -360,7 +347,42 @@ function readFileB64(file) {
     r.readAsDataURL(file);
   });
 }
+document.getElementById("docs").addEventListener("change", async (e) => {
+  for (const file of e.target.files) {
+    newFiles.push({ name: file.name, data: await readFileB64(file) });
+  }
+  e.target.value = "";
+  renderDocs();
+});
 
+// FORM: nuevo / editar
+function newComunicado() {
+  document.getElementById("comForm").reset();
+  document.getElementById("slug").value = "";
+  document.getElementById("formTitle").textContent = "Nuevo comunicado";
+  document.getElementById("fecha_inicio").value = today();
+  document.getElementById("fecha_fin").value = "";
+  currentDocs = []; newFiles = []; renderDocs();
+  setMsg("formMsg", "", "");
+  show("formView");
+}
+async function editComunicado(slug) {
+  setMsg("listMsg", "Cargando…", "");
+  try {
+    const d = await api("get", { slug });
+    document.getElementById("comForm").reset();
+    document.getElementById("slug").value = d.slug;
+    document.getElementById("formTitle").textContent = "Editar comunicado";
+    document.getElementById("title").value = d.data.title || "";
+    document.getElementById("fecha_inicio").value = (d.data.fecha_inicio || "").slice(0, 10);
+    document.getElementById("fecha_fin").value = (d.data.fecha_fin || "").slice(0, 10);
+    document.getElementById("body").value = d.body || "";
+    currentDocs = Array.isArray(d.data.documentos) ? d.data.documentos.slice() : [];
+    newFiles = []; renderDocs();
+    setMsg("listMsg", "", ""); setMsg("formMsg", "", "");
+    show("formView");
+  } catch (e) { setMsg("listMsg", e.message, "error"); }
+}
 document.getElementById("comForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = document.getElementById("saveBtn");
@@ -370,16 +392,12 @@ document.getElementById("comForm").addEventListener("submit", async (e) => {
     const payload = {
       slug: document.getElementById("slug").value || undefined,
       title: document.getElementById("title").value.trim(),
-      date: document.getElementById("date").value,
-      category: document.getElementById("category").value,
-      summary: document.getElementById("summary").value.trim(),
-      breadcrumb: document.getElementById("breadcrumb").value.trim(),
-      description: document.getElementById("description").value.trim(),
+      fecha_inicio: document.getElementById("fecha_inicio").value,
+      fecha_fin: document.getElementById("fecha_fin").value || "",
       body: document.getElementById("body").value,
-      documento: document.getElementById("comForm").dataset.documento || "",
+      documentos: currentDocs,
+      nuevos: newFiles,
     };
-    const pdfFile = document.getElementById("pdf").files[0];
-    if (pdfFile) payload.pdf = await readFileB64(pdfFile);
     await api("save", payload);
     await loadList();
     setMsg("listMsg", "Comunicado guardado. El sitio se está reconstruyendo en Netlify.", "ok");

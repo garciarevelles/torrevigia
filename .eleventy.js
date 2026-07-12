@@ -26,6 +26,18 @@ module.exports = function (eleventyConfig) {
     })
   );
 
+  const dos = (n) => String(n).padStart(2, "0");
+  // Fecha completa en dd/mm/aaaa
+  eleventyConfig.addFilter("fecha", (date) => {
+    const d = new Date(date);
+    return `${dos(d.getUTCDate())}/${dos(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  });
+  // Mes/año en mm/aaaa (para la cajita de fecha de la tarjeta)
+  eleventyConfig.addFilter("mmAaaa", (date) => {
+    const d = new Date(date);
+    return `${dos(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+  });
+
   eleventyConfig.addFilter("limit", (arr, n) => (arr || []).slice(0, n));
 
   eleventyConfig.addFilter("basename", (p) =>
@@ -35,14 +47,14 @@ module.exports = function (eleventyConfig) {
   // Comunicados ordenados: por campo "orden" (ascendente = arriba) y, en su
   // defecto, por fecha (más reciente primero).
   eleventyConfig.addCollection("comunicadosOrdenados", (api) =>
-    api.getFilteredByTag("comunicados").sort((a, b) => {
+    api.getFilteredByTag("comunicados").filter((c) => c.data.visible !== false).sort((a, b) => {
       const oa = a.data.orden, ob = b.data.orden;
       const ha = oa !== undefined && oa !== null && oa !== "";
       const hb = ob !== undefined && ob !== null && ob !== "";
       if (ha && hb) return Number(oa) - Number(ob);
       if (ha) return -1;
       if (hb) return 1;
-      return new Date(b.data.date) - new Date(a.data.date);
+      return new Date(b.data.fecha_inicio || 0) - new Date(a.data.fecha_inicio || 0);
     })
   );
 
