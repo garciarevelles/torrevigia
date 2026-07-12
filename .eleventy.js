@@ -32,6 +32,20 @@ module.exports = function (eleventyConfig) {
     decodeURIComponent((p || "").split("/").pop())
   );
 
+  // Comunicados ordenados: por campo "orden" (ascendente = arriba) y, en su
+  // defecto, por fecha (más reciente primero).
+  eleventyConfig.addCollection("comunicadosOrdenados", (api) =>
+    api.getFilteredByTag("comunicados").sort((a, b) => {
+      const oa = a.data.orden, ob = b.data.orden;
+      const ha = oa !== undefined && oa !== null && oa !== "";
+      const hb = ob !== undefined && ob !== null && ob !== "";
+      if (ha && hb) return Number(oa) - Number(ob);
+      if (ha) return -1;
+      if (hb) return 1;
+      return new Date(b.data.date) - new Date(a.data.date);
+    })
+  );
+
   return {
     dir: {
       input: ".",

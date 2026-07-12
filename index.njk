@@ -11,7 +11,7 @@ layout: base.njk
     </div>
 
     <div id="listaComunicados">
-      {% for comunicado in collections.comunicados | reverse %}
+      {% for comunicado in collections.comunicadosOrdenados %}
         {% include "comunicado-card.njk" %}
       {% endfor %}
     </div>

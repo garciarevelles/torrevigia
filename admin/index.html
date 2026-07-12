@@ -23,6 +23,11 @@
   button.secondary { background:#fff; color:var(--verde); border:1px solid var(--verde); }
   button.danger { background:#b23b3b; }
   button.link { background:none; color:var(--verde); padding:4px 8px; font-weight:600; }
+  button.link:disabled { opacity:.3; cursor:default; }
+  .arrows { display:flex; flex-direction:column; line-height:1; }
+  .arrows button { padding:0 6px; font-size:.8rem; }
+  .item .left { display:flex; align-items:center; gap:10px; }
+  .orderbar { margin:0 0 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .row { display:flex; gap:12px; flex-wrap:wrap; }
   .row > div { flex:1; min-width:180px; }
   .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:22px; }
@@ -170,21 +175,68 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   }
 });
 
+let listData = [];
+let orderDirty = false;
+
 async function loadList() {
   const data = await api("list");
   if (data.categories) CATEGORIES = data.categories;
+  listData = data.comunicados || [];
+  orderDirty = false;
+  renderList();
+}
+
+function renderList() {
   const list = document.getElementById("list");
   list.innerHTML = "";
-  if (!data.comunicados.length) {
-    list.innerHTML = '<p class="meta">No hay comunicados todavía. Crea el primero con “+ Nuevo comunicado”.</p>';
+
+  if (orderDirty) {
+    const bar = document.createElement("div");
+    bar.className = "orderbar";
+    const save = document.createElement("button");
+    save.textContent = "Guardar orden";
+    save.onclick = saveOrder;
+    const hint = document.createElement("span");
+    hint.className = "meta";
+    hint.textContent = "Has cambiado el orden: guárdalo para publicarlo.";
+    bar.append(save, hint);
+    list.append(bar);
   }
-  for (const c of data.comunicados) {
+
+  if (!listData.length) {
+    const p = document.createElement("p");
+    p.className = "meta";
+    p.textContent = "No hay comunicados todavía. Crea el primero con “+ Nuevo comunicado”.";
+    list.append(p);
+    return;
+  }
+
+  listData.forEach((c, i) => {
     const div = document.createElement("div");
     div.className = "item";
+
+    const left = document.createElement("div");
+    left.className = "left";
+
+    const arrows = document.createElement("div");
+    arrows.className = "arrows";
+    const up = document.createElement("button");
+    up.className = "link"; up.textContent = "▲"; up.title = "Subir";
+    up.disabled = i === 0;
+    up.onclick = () => moveItem(i, -1);
+    const down = document.createElement("button");
+    down.className = "link"; down.textContent = "▼"; down.title = "Bajar";
+    down.disabled = i === listData.length - 1;
+    down.onclick = () => moveItem(i, 1);
+    arrows.append(up, down);
+
     const info = document.createElement("div");
     info.innerHTML =
       "<strong>" + escapeHtml(c.title) + "</strong>" +
       '<div class="meta">' + (c.date || "") + (c.category ? " · " + escapeHtml(c.category) : "") + "</div>";
+
+    left.append(arrows, info);
+
     const acts = document.createElement("div");
     acts.className = "item-actions";
     const bE = document.createElement("button");
@@ -194,8 +246,30 @@ async function loadList() {
     bD.className = "link"; bD.style.color = "#b23b3b"; bD.textContent = "Borrar";
     bD.onclick = () => delComunicado(c.slug, c.title);
     acts.append(bE, bD);
-    div.append(info, acts);
+
+    div.append(left, acts);
     list.append(div);
+  });
+}
+
+function moveItem(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= listData.length) return;
+  const t = listData[i];
+  listData[i] = listData[j];
+  listData[j] = t;
+  orderDirty = true;
+  renderList();
+}
+
+async function saveOrder() {
+  setMsg("listMsg", "Guardando orden…", "");
+  try {
+    await api("setOrder", { order: listData.map((c) => c.slug) });
+    await loadList();
+    setMsg("listMsg", "Orden guardado. El sitio se está reconstruyendo.", "ok");
+  } catch (e) {
+    setMsg("listMsg", e.message, "error");
   }
 }
 function escapeHtml(s) {

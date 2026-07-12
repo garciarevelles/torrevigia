@@ -71,6 +71,9 @@ function toMarkdown(f) {
   lines.push(`summary: ${esc(f.summary)}`);
   lines.push(`breadcrumb: ${esc(f.breadcrumb || f.title)}`);
   if (f.documento) lines.push(`documento: ${esc(f.documento)}`);
+  if (f.orden !== undefined && f.orden !== null && f.orden !== "" && !isNaN(Number(f.orden))) {
+    lines.push(`orden: ${parseInt(f.orden, 10)}`);
+  }
   lines.push("---");
   lines.push((f.body || "").replace(/\r\n/g, "\n").trim());
   lines.push("");
@@ -179,6 +182,23 @@ async function storeRemove(p, message) {
   if (!res.ok) throw new Error(`GitHub DELETE ${p}: ${res.status} ${await res.text()}`);
 }
 
+// Devuelve un valor de "orden" para colocar un comunicado nuevo arriba del
+// todo, si ya hay otros ordenados manualmente; si no, undefined (usa la fecha).
+async function topOrden() {
+  const files = await storeListMd(COMUNICADOS_DIR);
+  let min = null;
+  for (const f of files) {
+    const s = await storeRead(f.path);
+    if (!s) continue;
+    const o = parseMarkdown(s.text).data.orden;
+    if (o !== undefined && o !== null && o !== "" && !isNaN(Number(o))) {
+      const n = Number(o);
+      if (min === null || n < min) min = n;
+    }
+  }
+  return min === null ? undefined : min - 1;
+}
+
 /* ---------- Handler ---------- */
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") return json(405, { error: "Método no permitido" });
@@ -208,9 +228,18 @@ exports.handler = async (event) => {
           title: data.title || f.name,
           date: data.date || "",
           category: data.category || "",
+          orden: data.orden,
         });
       }
-      result.sort((a, b) => (a.date < b.date ? 1 : -1));
+      result.sort((a, b) => {
+        const oa = a.orden, ob = b.orden;
+        const ha = oa !== undefined && oa !== null && oa !== "";
+        const hb = ob !== undefined && ob !== null && ob !== "";
+        if (ha && hb) return Number(oa) - Number(ob);
+        if (ha) return -1;
+        if (hb) return 1;
+        return a.date < b.date ? 1 : -1;
+      });
       return json(200, { comunicados: result, categories: CATEGORIES, mode: USE_LOCAL ? "local" : "github" });
     }
 
@@ -239,10 +268,17 @@ exports.handler = async (event) => {
       }
 
       const mdPath = `${COMUNICADOS_DIR}/${slug}.md`;
-      const existingSha = await storeExists(mdPath);
-      if (existingSha && !isEdit) {
+      const existing = await storeRead(mdPath);
+      if (existing && !isEdit) {
         return json(409, { error: "Ya existe un comunicado con ese título. Cambia el título o edítalo." });
       }
+
+      // Orden: al editar se conserva el existente; al crear se coloca arriba
+      // si ya hay comunicados ordenados manualmente.
+      let orden;
+      if (existing) orden = parseMarkdown(existing.text).data.orden;
+      else orden = await topOrden();
+
       const md = toMarkdown({
         title: body.title,
         description: body.description,
@@ -251,9 +287,10 @@ exports.handler = async (event) => {
         summary: body.summary,
         breadcrumb: body.breadcrumb,
         documento,
+        orden,
         body: body.body,
       });
-      await storeWrite(mdPath, Buffer.from(md, "utf8"), `${isEdit ? "Editar" : "Crear"} comunicado: ${slug}`, existingSha);
+      await storeWrite(mdPath, Buffer.from(md, "utf8"), `${isEdit ? "Editar" : "Crear"} comunicado: ${slug}`, existing ? existing.sha : null);
       return json(200, { ok: true, slug, documento });
     }
 
@@ -264,6 +301,23 @@ exports.handler = async (event) => {
       await storeRemove(mdPath, `Eliminar comunicado: ${slug}`);
       await storeRemove(`${PDF_DIR}/${slug}.pdf`, `Eliminar documento: ${slug}`);
       return json(200, { ok: true });
+    }
+
+    if (action === "setOrder") {
+      const order = Array.isArray(body.order) ? body.order : [];
+      let changed = 0;
+      for (let i = 0; i < order.length; i++) {
+        const slug = slugify(order[i]);
+        const p = `${COMUNICADOS_DIR}/${slug}.md`;
+        const stored = await storeRead(p);
+        if (!stored) continue;
+        const { data, body: mdBody } = parseMarkdown(stored.text);
+        if (String(data.orden) === String(i)) continue;
+        const md = toMarkdown({ ...data, orden: i, body: mdBody });
+        await storeWrite(p, Buffer.from(md, "utf8"), `Reordenar comunicado: ${slug}`, stored.sha);
+        changed++;
+      }
+      return json(200, { ok: true, changed });
     }
 
     return json(400, { error: "Acción desconocida" });
