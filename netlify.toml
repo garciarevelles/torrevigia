@@ -8,3 +8,9 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+[dev]
+  command = "npx @11ty/eleventy --serve --port=8082"
+  targetPort = 8082
+  port = 8888
+  framework = "#custom"

@@ -1,26 +1,40 @@
 // Mini-panel de comunicados de Torrevigía.
 // Función serverless (Netlify) que verifica usuario/contraseña y guarda los
-// comunicados en el repositorio de GitHub usando la API de contenidos.
-// No expone el token ni la contraseña al navegador: viven en variables de
-// entorno de Netlify (ADMIN_USER, ADMIN_PASSWORD, GITHUB_TOKEN, GITHUB_REPO,
-// GITHUB_BRANCH).
+// comunicados. En producción escribe en el repositorio de GitHub (API de
+// contenidos). En local, bajo `netlify dev`, escribe directamente en los
+// archivos del proyecto para poder probar sin token ni GitHub.
+//
+// Variables de entorno (producción): ADMIN_USER, ADMIN_PASSWORD,
+// GITHUB_TOKEN, GITHUB_REPO ("usuario/repo"), GITHUB_BRANCH.
+// En local basta ADMIN_USER y ADMIN_PASSWORD (p. ej. en un archivo .env).
+
+const fs = require("fs");
+const path = require("path");
 
 const GH_API = "https://api.github.com";
-const REPO = process.env.GITHUB_REPO; // "usuario/repositorio"
+const REPO = process.env.GITHUB_REPO;
 const BRANCH = process.env.GITHUB_BRANCH || "main";
 const COMUNICADOS_DIR = "comunicados";
 const PDF_DIR = "img/comunicados";
 const CATEGORIES = ["Transparencia", "Urbanismo", "Participación"];
 
-function ghHeaders() {
-  return {
-    Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-    Accept: "application/vnd.github+json",
-    "User-Agent": "torrevigia-admin",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-}
+// Modo local: activo cuando corremos bajo `netlify dev`.
+const USE_LOCAL = process.env.NETLIFY_DEV === "true";
 
+function findRoot() {
+  const candidates = [
+    process.cwd(),
+    path.resolve(__dirname, "..", ".."),
+    path.resolve(__dirname, "..", "..", ".."),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, COMUNICADOS_DIR))) return c;
+  }
+  return process.cwd();
+}
+const ROOT = USE_LOCAL ? findRoot() : process.cwd();
+
+/* ---------- Utilidades ---------- */
 function json(statusCode, obj) {
   return {
     statusCode,
@@ -28,7 +42,6 @@ function json(statusCode, obj) {
     body: JSON.stringify(obj),
   };
 }
-
 function slugify(str) {
   return String(str || "")
     .normalize("NFD")
@@ -38,7 +51,6 @@ function slugify(str) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 }
-
 function checkAuth(body) {
   const pass = process.env.ADMIN_PASSWORD;
   const user = process.env.ADMIN_USER;
@@ -47,11 +59,9 @@ function checkAuth(body) {
   if (user && body.username !== user) return false;
   return true;
 }
-
 function esc(s) {
   return `"${String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
-
 function toMarkdown(f) {
   const lines = ["---"];
   lines.push(`title: ${esc(f.title)}`);
@@ -66,7 +76,6 @@ function toMarkdown(f) {
   lines.push("");
   return lines.join("\n");
 }
-
 function parseMarkdown(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   const data = {};
@@ -86,50 +95,91 @@ function parseMarkdown(text) {
   return { data, body: body.replace(/^\n+/, "") };
 }
 
-async function ghGetFile(path) {
-  const res = await fetch(
-    `${GH_API}/repos/${REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}?ref=${BRANCH}`,
-    { headers: ghHeaders() }
-  );
+/* ---------- GitHub API ---------- */
+function ghHeaders() {
+  return {
+    Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "torrevigia-admin",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+}
+function ghUrl(p) {
+  return `${GH_API}/repos/${REPO}/contents/${encodeURIComponent(p).replace(/%2F/g, "/")}`;
+}
+async function ghGetFile(p) {
+  const res = await fetch(`${ghUrl(p)}?ref=${BRANCH}`, { headers: ghHeaders() });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub GET ${path}: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`GitHub GET ${p}: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-async function ghListDir(path) {
-  const res = await fetch(
-    `${GH_API}/repos/${REPO}/contents/${path}?ref=${BRANCH}`,
-    { headers: ghHeaders() }
-  );
+/* ---------- Capa de almacenamiento (local o GitHub) ---------- */
+async function storeListMd(dir) {
+  if (USE_LOCAL) {
+    const abs = path.join(ROOT, dir);
+    if (!fs.existsSync(abs)) return [];
+    return fs
+      .readdirSync(abs)
+      .filter((n) => n.endsWith(".md"))
+      .map((n) => ({ name: n, path: `${dir}/${n}` }));
+  }
+  const res = await fetch(`${ghUrl(dir)}?ref=${BRANCH}`, { headers: ghHeaders() });
   if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`GitHub LIST ${path}: ${res.status} ${await res.text()}`);
-  return res.json();
+  if (!res.ok) throw new Error(`GitHub LIST ${dir}: ${res.status} ${await res.text()}`);
+  const items = await res.json();
+  return items
+    .filter((i) => i.type === "file" && i.name.endsWith(".md"))
+    .map((i) => ({ name: i.name, path: i.path }));
+}
+async function storeRead(p) {
+  if (USE_LOCAL) {
+    const abs = path.join(ROOT, p);
+    if (!fs.existsSync(abs)) return null;
+    return { text: fs.readFileSync(abs, "utf8"), sha: null };
+  }
+  const f = await ghGetFile(p);
+  if (!f) return null;
+  return { text: Buffer.from(f.content, "base64").toString("utf8"), sha: f.sha };
+}
+async function storeExists(p) {
+  if (USE_LOCAL) return fs.existsSync(path.join(ROOT, p)) ? "local" : null;
+  const f = await ghGetFile(p);
+  return f ? f.sha : null;
+}
+async function storeWrite(p, buffer, message, sha) {
+  if (USE_LOCAL) {
+    const abs = path.join(ROOT, p);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, buffer);
+    return;
+  }
+  const payload = { message, content: buffer.toString("base64"), branch: BRANCH };
+  if (sha && sha !== "local") payload.sha = sha;
+  const res = await fetch(ghUrl(p), {
+    method: "PUT",
+    headers: ghHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`GitHub PUT ${p}: ${res.status} ${await res.text()}`);
+}
+async function storeRemove(p, message) {
+  if (USE_LOCAL) {
+    const abs = path.join(ROOT, p);
+    if (fs.existsSync(abs)) fs.unlinkSync(abs);
+    return;
+  }
+  const f = await ghGetFile(p);
+  if (!f) return;
+  const res = await fetch(ghUrl(p), {
+    method: "DELETE",
+    headers: ghHeaders(),
+    body: JSON.stringify({ message, sha: f.sha, branch: BRANCH }),
+  });
+  if (!res.ok) throw new Error(`GitHub DELETE ${p}: ${res.status} ${await res.text()}`);
 }
 
-async function ghPutFile(path, contentBase64, message, sha) {
-  const payload = { message, content: contentBase64, branch: BRANCH };
-  if (sha) payload.sha = sha;
-  const res = await fetch(
-    `${GH_API}/repos/${REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}`,
-    { method: "PUT", headers: ghHeaders(), body: JSON.stringify(payload) }
-  );
-  if (!res.ok) throw new Error(`GitHub PUT ${path}: ${res.status} ${await res.text()}`);
-  return res.json();
-}
-
-async function ghDeleteFile(path, sha, message) {
-  const res = await fetch(
-    `${GH_API}/repos/${REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, "/")}`,
-    {
-      method: "DELETE",
-      headers: ghHeaders(),
-      body: JSON.stringify({ message, sha, branch: BRANCH }),
-    }
-  );
-  if (!res.ok) throw new Error(`GitHub DELETE ${path}: ${res.status} ${await res.text()}`);
-  return res.json();
-}
-
+/* ---------- Handler ---------- */
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") return json(405, { error: "Método no permitido" });
 
@@ -141,21 +191,18 @@ exports.handler = async (event) => {
   }
 
   if (!checkAuth(body)) return json(401, { error: "Usuario o contraseña incorrectos" });
-  if (!REPO || !process.env.GITHUB_TOKEN) {
+  if (!USE_LOCAL && (!REPO || !process.env.GITHUB_TOKEN)) {
     return json(500, { error: "Falta configuración del servidor (GITHUB_REPO / GITHUB_TOKEN)" });
   }
 
   const action = body.action;
-
   try {
     if (action === "list") {
-      const items = await ghListDir(COMUNICADOS_DIR);
-      const mdFiles = items.filter((i) => i.type === "file" && i.name.endsWith(".md"));
+      const files = await storeListMd(COMUNICADOS_DIR);
       const result = [];
-      for (const f of mdFiles) {
-        const file = await ghGetFile(f.path);
-        const text = Buffer.from(file.content, "base64").toString("utf8");
-        const { data } = parseMarkdown(text);
+      for (const f of files) {
+        const stored = await storeRead(f.path);
+        const { data } = parseMarkdown(stored.text);
         result.push({
           slug: f.name.replace(/\.md$/, ""),
           title: data.title || f.name,
@@ -164,16 +211,15 @@ exports.handler = async (event) => {
         });
       }
       result.sort((a, b) => (a.date < b.date ? 1 : -1));
-      return json(200, { comunicados: result, categories: CATEGORIES });
+      return json(200, { comunicados: result, categories: CATEGORIES, mode: USE_LOCAL ? "local" : "github" });
     }
 
     if (action === "get") {
       const slug = slugify(body.slug);
-      const file = await ghGetFile(`${COMUNICADOS_DIR}/${slug}.md`);
-      if (!file) return json(404, { error: "Comunicado no encontrado" });
-      const text = Buffer.from(file.content, "base64").toString("utf8");
-      const { data, body: mdBody } = parseMarkdown(text);
-      return json(200, { slug, data, body: mdBody, sha: file.sha });
+      const stored = await storeRead(`${COMUNICADOS_DIR}/${slug}.md`);
+      if (!stored) return json(404, { error: "Comunicado no encontrado" });
+      const { data, body: mdBody } = parseMarkdown(stored.text);
+      return json(200, { slug, data, body: mdBody, sha: stored.sha });
     }
 
     if (action === "save") {
@@ -185,23 +231,16 @@ exports.handler = async (event) => {
       if (!slug) return json(400, { error: "No se pudo generar el identificador del comunicado" });
 
       let documento = body.documento || "";
-
-      // PDF nuevo (base64) opcional
       if (body.pdf) {
         const pdfPath = `${PDF_DIR}/${slug}.pdf`;
-        const existingPdf = await ghGetFile(pdfPath);
-        await ghPutFile(
-          pdfPath,
-          body.pdf,
-          `Subir documento de comunicado: ${slug}`,
-          existingPdf ? existingPdf.sha : undefined
-        );
+        const pdfSha = await storeExists(pdfPath);
+        await storeWrite(pdfPath, Buffer.from(body.pdf, "base64"), `Subir documento: ${slug}`, pdfSha);
         documento = `/${pdfPath}`;
       }
 
       const mdPath = `${COMUNICADOS_DIR}/${slug}.md`;
-      const existing = await ghGetFile(mdPath);
-      if (existing && !isEdit) {
+      const existingSha = await storeExists(mdPath);
+      if (existingSha && !isEdit) {
         return json(409, { error: "Ya existe un comunicado con ese título. Cambia el título o edítalo." });
       }
       const md = toMarkdown({
@@ -214,25 +253,16 @@ exports.handler = async (event) => {
         documento,
         body: body.body,
       });
-      const contentBase64 = Buffer.from(md, "utf8").toString("base64");
-      await ghPutFile(
-        mdPath,
-        contentBase64,
-        `${isEdit ? "Editar" : "Crear"} comunicado: ${slug}`,
-        existing ? existing.sha : undefined
-      );
+      await storeWrite(mdPath, Buffer.from(md, "utf8"), `${isEdit ? "Editar" : "Crear"} comunicado: ${slug}`, existingSha);
       return json(200, { ok: true, slug, documento });
     }
 
     if (action === "delete") {
       const slug = slugify(body.slug);
       const mdPath = `${COMUNICADOS_DIR}/${slug}.md`;
-      const existing = await ghGetFile(mdPath);
-      if (!existing) return json(404, { error: "Comunicado no encontrado" });
-      await ghDeleteFile(mdPath, existing.sha, `Eliminar comunicado: ${slug}`);
-      // Borrar el PDF asociado si existe
-      const pdf = await ghGetFile(`${PDF_DIR}/${slug}.pdf`);
-      if (pdf) await ghDeleteFile(`${PDF_DIR}/${slug}.pdf`, pdf.sha, `Eliminar documento: ${slug}`);
+      if (!(await storeExists(mdPath))) return json(404, { error: "Comunicado no encontrado" });
+      await storeRemove(mdPath, `Eliminar comunicado: ${slug}`);
+      await storeRemove(`${PDF_DIR}/${slug}.pdf`, `Eliminar documento: ${slug}`);
       return json(200, { ok: true });
     }
 
